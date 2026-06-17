@@ -1,0 +1,129 @@
+// Documentation and code indexer: walks the files in a directory, splits them into
+// chunks (markdown — by headings, code — by lines), computes embeddings via Ollama
+// and stores them in pgvector. Unchanged chunks (by sha256) are not re-embedded.
+// Stale chunks are removed. Sources are separated by a logical collection.
+import { readFile, readdir } from 'node:fs/promises';
+import { join, relative, extname } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { Prisma } from '@prisma/client';
+import { prisma } from '../db/prisma.js';
+import { logger } from '../lib/logger.js';
+import { sha256, toVectorLiteral } from '../helpers/index.js';
+import { embed } from '../llm/ollama.js';
+import { chunkMarkdown, chunkCode, type Chunk } from './chunker.js';
+
+const log = logger.child('indexer');
+
+const DOC_EXT = new Set(['.md', '.mdx', '.markdown', '.txt']);
+const CODE_EXT = new Set([
+  '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs',
+  '.py', '.go', '.java', '.rb', '.php', '.rs', '.c', '.cpp', '.h', '.hpp',
+  '.cs', '.kt', '.swift', '.vue', '.svelte', '.sql', '.json', '.yaml', '.yml',
+]);
+const IGNORE_DIRS = new Set([
+  'node_modules', '.git', '.next', '.nuxt', 'dist', 'build', 'out',
+  'coverage', '.turbo', '.cache', 'vendor', 'public', '.idea', '.vscode',
+]);
+const MAX_FILE_BYTES = 300_000; // skip huge/generated files
+
+async function* walkFiles(dir: string): AsyncGenerator<string> {
+  const entries = await readdir(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (IGNORE_DIRS.has(entry.name)) continue;
+      yield* walkFiles(full);
+    } else {
+      const ext = extname(entry.name).toLowerCase();
+      if (DOC_EXT.has(ext) || CODE_EXT.has(ext)) yield full;
+    }
+  }
+}
+
+function chunkFile(ext: string, raw: string): { chunks: Chunk[]; source: string } {
+  if (DOC_EXT.has(ext)) return { chunks: chunkMarkdown(raw), source: 'markdown' };
+  return { chunks: chunkCode(raw), source: 'code' };
+}
+
+// HNSW index for fast cosine search. IF NOT EXISTS — safe to run repeatedly.
+export async function ensureVectorIndex(): Promise<void> {
+  await prisma.$executeRawUnsafe(
+    `CREATE INDEX IF NOT EXISTS docchunk_embedding_hnsw ON "DocChunk" USING hnsw (embedding vector_cosine_ops);`,
+  );
+}
+
+export interface IndexStats {
+  files: number;
+  chunks: number;
+  embedded: number;
+  skipped: number;
+  deleted: number;
+}
+
+export interface IndexOptions {
+  collection?: string;
+}
+
+export async function indexDirectory(dir: string, opts: IndexOptions = {}): Promise<IndexStats> {
+  const collection = opts.collection ?? 'markdown';
+  const stats: IndexStats = { files: 0, chunks: 0, embedded: 0, skipped: 0, deleted: 0 };
+  await ensureVectorIndex();
+
+  for await (const file of walkFiles(dir)) {
+    const stat = await readFile(file).then((b) => b.byteLength);
+    if (stat > MAX_FILE_BYTES) continue;
+
+    const rel = relative(dir, file);
+    const ext = extname(file).toLowerCase();
+    const raw = await readFile(file, 'utf8');
+    const { chunks, source } = chunkFile(ext, raw);
+    stats.files++;
+    stats.chunks += chunks.length;
+
+    // Hashes of already-indexed chunks of this file in this collection.
+    const existing = await prisma.docChunk.findMany({
+      where: { collection, path: rel },
+      select: { chunkIndex: true, contentHash: true },
+    });
+    const hashByIndex = new Map(existing.map((c) => [c.chunkIndex, c.contentHash]));
+
+    const toEmbed = chunks.filter((c) => hashByIndex.get(c.index) !== sha256(c.content));
+    let vectors: number[][] = [];
+    if (toEmbed.length > 0) {
+      vectors = await embed(toEmbed.map((c) => `search_document: ${c.content}`));
+    }
+    const vecByIndex = new Map<number, number[]>();
+    toEmbed.forEach((c, i) => {
+      const v = vectors[i];
+      if (v) vecByIndex.set(c.index, v);
+    });
+
+    for (const c of chunks) {
+      const hash = sha256(c.content);
+      if (hashByIndex.get(c.index) === hash) {
+        stats.skipped++;
+        continue;
+      }
+      const vec = vecByIndex.get(c.index);
+      if (!vec) continue;
+      await prisma.$executeRaw(Prisma.sql`
+        INSERT INTO "DocChunk" (id, collection, source, path, "chunkIndex", content, "contentHash", embedding, "createdAt")
+        VALUES (${randomUUID()}, ${collection}, ${source}, ${rel}, ${c.index}, ${c.content}, ${hash}, ${toVectorLiteral(vec)}::vector, now())
+        ON CONFLICT (collection, path, "chunkIndex") DO UPDATE
+        SET content = EXCLUDED.content,
+            "contentHash" = EXCLUDED."contentHash",
+            embedding = EXCLUDED.embedding,
+            source = EXCLUDED.source
+      `);
+      stats.embedded++;
+    }
+
+    const del = await prisma.docChunk.deleteMany({
+      where: { collection, path: rel, chunkIndex: { gte: chunks.length } },
+    });
+    stats.deleted += del.count;
+  }
+
+  log.info(`indexing complete [collection=${collection}]`, stats);
+  return stats;
+}

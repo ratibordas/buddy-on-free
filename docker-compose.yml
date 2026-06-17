@@ -1,0 +1,43 @@
+# Local infrastructure for the free (Node) version of the bot.
+# Ollama is intentionally NOT here — the LLM lives on a separate machine in the LAN
+# (see docs/llm-setup.md). We connect to it via OLLAMA_BASE_URL.
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: buddy-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: buddy
+      POSTGRES_PASSWORD: buddy
+      POSTGRES_DB: buddy
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U buddy -d buddy"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: buddy-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: buddy
+      RABBITMQ_DEFAULT_PASS: buddy
+    ports:
+      - "5672:5672"    # AMQP
+      - "15672:15672"  # Management UI: http://localhost:15672 (buddy/buddy)
+    volumes:
+      - rabbitmqdata:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
+volumes:
+  pgdata:
+  rabbitmqdata:
