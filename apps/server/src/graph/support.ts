@@ -7,19 +7,16 @@ import { Annotation, StateGraph } from '@langchain/langgraph';
 import { ChatOllama } from '@langchain/ollama';
 import { SystemMessage, HumanMessage } from '@langchain/core/messages';
 import { config } from '../config/index.js';
+import { appConfig } from '../config/appConfig.js';
 import { logger } from '../lib/logger.js';
 import { search, type SearchHit } from '../rag/search.js';
 
 const log = logger.child('graph');
 
-// Hits below this score are considered irrelevant and not put into the context —
-// so the model doesn't "make up" an answer from noisy matches.
-const MIN_SCORE = 0.35;
-
 const llm = new ChatOllama({
   baseUrl: config.OLLAMA_BASE_URL,
-  model: config.OLLAMA_CHAT_MODEL,
-  temperature: 0.1,
+  model: appConfig.generation.model,
+  temperature: appConfig.generation.temperature,
 });
 
 const GraphState = Annotation.Root({
@@ -33,18 +30,14 @@ const GraphState = Annotation.Root({
 type State = typeof GraphState.State;
 
 async function retrieve(state: State): Promise<Partial<State>> {
-  const hits = (await search(state.question, 5, { collections: state.collections })).filter(
-    (h) => h.score >= MIN_SCORE,
-  );
+  const hits = (
+    await search(state.question, appConfig.retrieval.topK, { collections: state.collections })
+  ).filter((h) => h.score >= appConfig.retrieval.minScore);
   log.debug(`retrieve: ${hits.length} relevant hits`);
   return { hits };
 }
 
-const SYSTEM_PROMPT = `You are a first-line support assistant. Answer the user's question using ONLY the documentation context provided.
-Rules:
-- If the context does not contain the answer, say you don't have that information and suggest contacting human support. Never invent details.
-- Be concise and practical; prefer concrete steps.
-- Base every statement on the context.`;
+const SYSTEM_PROMPT = appConfig.prompts.system;
 
 async function generate(state: State): Promise<Partial<State>> {
   const { question, hits } = state;

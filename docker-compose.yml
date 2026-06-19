@@ -1,6 +1,6 @@
-# Local infrastructure for the free (Node) version of the bot.
+# Local stack for the free (Node) version of the bot.
 # Ollama is intentionally NOT here — the LLM lives on a separate machine in the LAN
-# (see docs/llm-setup.md). We connect to it via OLLAMA_BASE_URL.
+# (see README.md). We connect to it via OLLAMA_BASE_URL.
 services:
   postgres:
     image: pgvector/pgvector:pg16
@@ -37,6 +37,38 @@ services:
       interval: 10s
       timeout: 10s
       retries: 10
+
+  server:
+    build:
+      context: .
+      dockerfile: apps/server/Dockerfile
+    container_name: buddy-server
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 3000
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      DATABASE_URL: postgresql://buddy:buddy@postgres:5432/buddy?schema=public
+      RABBITMQ_URL: amqp://buddy:buddy@rabbitmq:5672
+      # Point this at your Ollama host (LAN IP, or host.docker.internal if on this machine).
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_EMBED_MODEL: ${OLLAMA_EMBED_MODEL:-nomic-embed-text}
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-2}
+    ports:
+      - "3000:3000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # To index your own code/docs without rebuilding, mount them and point
+    # buddy.config.yaml at the mount path (absolute), e.g.:
+    # volumes:
+    #   - ./buddy.config.yaml:/app/apps/server/buddy.config.yaml:ro
+    #   - /path/to/repo:/data/repo:ro
 
 volumes:
   pgdata:

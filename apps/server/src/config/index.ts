@@ -19,7 +19,7 @@ const schema = z.object({
   RABBITMQ_PREFETCH: z.coerce.number().int().positive().default(2),
 
   OLLAMA_BASE_URL: z.string().url(),
-  OLLAMA_CHAT_MODEL: z.string().default('qwen2.5:7b-instruct'),
+  // Chat/generation model lives in buddy.config.yaml (generation.model).
   OLLAMA_EMBED_MODEL: z.string().default('nomic-embed-text'),
   EMBEDDING_DIM: z.coerce.number().int().positive().default(768),
 

@@ -8,6 +8,7 @@ import { QUEUE, type IncomingMessage, type EnqueueResult } from '../types/index.
 export async function enqueueMessage(input: IncomingMessage): Promise<EnqueueResult> {
   const job = await prisma.job.create({
     data: {
+      userId: input.userId ?? null,
       channel: input.channel,
       externalId: input.externalId ?? null,
       question: input.text,

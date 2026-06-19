@@ -1,0 +1,15 @@
+# Keep the build context small and never bake secrets/build output.
+**/node_modules
+**/dist
+**/.next
+**/coverage
+.git
+.gitignore
+**/*.log
+**/.DS_Store
+.env
+.env.*
+**/.env
+**/.env.*
+.vscode
+.idea

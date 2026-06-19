@@ -1,0 +1,34 @@
+# buddy-on behavior config (loaded + validated at startup).
+# Secrets/infra (DB, RabbitMQ, Ollama URL, JWT, ports) stay in .env.
+# Override the path with the BUDDY_CONFIG env var. Relative source paths are
+# resolved against this file's directory.
+
+generation:
+  model: gemma4:e4b        # single generation model (Ollama tag); e4b on CPU, 26b on GPU
+  temperature: 0.1
+
+retrieval:
+  mode: vector             # vector | lexical | hybrid  (lexical/hybrid: roadmap R3)
+  topK: 5
+  minScore: 0.35           # hits below this are dropped from context
+
+# Sources indexed into pgvector. type is informational (chunker routes by extension).
+sources:
+  - collection: handbook
+    type: docs
+    path: ../../sample-docs
+  # - collection: sk-tours
+  #   type: code
+  #   path: /absolute/path/to/repo
+
+reindex:
+  onStartup: true          # ensure non-empty index before serving; refresh on boot
+  cron: "0 3 * * *"        # daily incremental re-index (omit to disable)
+
+prompts:
+  system: |
+    You are a first-line support assistant. Answer the user's question using ONLY the documentation context provided.
+    Rules:
+    - If the context does not contain the answer, say you don't have that information and suggest contacting human support. Never invent details.
+    - Be concise and practical; prefer concrete steps.
+    - Base every statement on the context.

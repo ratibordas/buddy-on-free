@@ -17,9 +17,11 @@ export async function registerMessageRoutes(app: FastifyInstance): Promise<void>
     if (!parsed.success) {
       return reply.code(400).send({ error: 'invalid_body', details: parsed.error.flatten() });
     }
+    const userId = (req.user as { sub?: string } | undefined)?.sub;
     const result = await enqueueMessage({
       channel: parsed.data.channel,
       text: parsed.data.text,
+      userId,
       externalId: parsed.data.externalId,
     });
     return reply.code(202).send(result);

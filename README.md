@@ -41,27 +41,44 @@ embedded, matched against the indexed chunks, and the retrieved context is sent
 to the local LLM, which answers grounded in that context (and declines when the
 context has no answer, instead of inventing one).
 
-## Quick start
+## Configuration
+
+Two layers:
+- **`.env`** — infra/secrets (DB, RabbitMQ, Ollama URL, JWT, ports).
+- **`apps/server/buddy.config.yaml`** — behavior: generation model, retrieval
+  settings, **sources to index**, re-index schedule, and the system prompt.
+  Validated with zod at startup.
+
+On boot the server applies migrations, **indexes the configured sources** (so it
+never answers against an empty index), and schedules a daily incremental
+re-index. Relative source paths resolve against the config file.
+
+## Quick start — Docker (all-in-one)
 
 ```bash
-# 1. Start infrastructure (Postgres + pgvector, RabbitMQ)
-docker compose up -d
+cp .env.example .env                          # optional; compose has sane defaults
+export OLLAMA_BASE_URL=http://<ollama-host>:11434
+docker compose up -d --build                  # Postgres + RabbitMQ + the server
+```
 
-# 2. Configure the server
+The `server` container runs migrations, seed-indexes the sources from
+`buddy.config.yaml`, and serves on `http://localhost:3000`.
+
+## Quick start — local dev
+
+```bash
+docker compose up -d postgres rabbitmq        # infra only
 cd apps/server
-cp ../../.env.example .env        # set OLLAMA_BASE_URL to your Ollama host
+cp ../../.env.example .env                     # set OLLAMA_BASE_URL to your Ollama host
 npm install
-npm run prisma:migrate            # apply the DB schema
-
-# 3. Index some documentation / a codebase
-npm run index -- ../../sample-docs                 # markdown collection
-npm run index -- /path/to/repo my-codebase         # code collection
-
-# 4. Run the server (HTTP + worker)
-npm run dev
+npm run prisma:deploy                          # apply migrations
+npm run dev                                    # HTTP + worker; seed-indexes on boot
 ```
 
 Health checks: `GET /health` (liveness), `GET /ready` (DB / RabbitMQ / Ollama).
+
+Ad-hoc indexing (outside the configured sources) still works via the CLI:
+`npm run index -- <dir> [collection]`.
 
 ### LLM (Ollama)
 
@@ -71,7 +88,7 @@ it. Pull the models referenced in `.env`:
 
 ```bash
 ollama pull nomic-embed-text          # embeddings (required for RAG)
-ollama pull qwen2.5-coder:7b-instruct # generation (or another instruct model)
+ollama pull gemma4:e4b                # generation (model set in buddy.config.yaml)
 ```
 
 ## REST API

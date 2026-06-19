@@ -42,6 +42,7 @@ model User {
 
 model Job {
   id           String         @id @default(uuid())
+  userId       String? // owner (JWT subject); null for unauthenticated/messenger sources
   channel      MessageChannel
   externalId   String? // message/chat id in the external messenger
   status       JobStatus      @default(queued)
@@ -58,6 +59,7 @@ model Job {
   finishedAt   DateTime?
 
   @@index([status])
+  @@index([userId])
   @@index([channel, externalId])
 }
 
