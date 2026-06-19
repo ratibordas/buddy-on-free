@@ -4,20 +4,14 @@
 //
 // RAG search comes from rag/search (our pgvector), generation — ChatOllama.
 import { Annotation, StateGraph } from '@langchain/langgraph';
-import { ChatOllama } from '@langchain/ollama';
 import { SystemMessage, HumanMessage } from '@langchain/core/messages';
-import { config } from '../config/index.js';
 import { appConfig } from '../config/appConfig.js';
 import { logger } from '../lib/logger.js';
+import { chatModel } from '../llm/chat.js';
+import { expandQuery } from '../rag/expand.js';
 import { search, type SearchHit } from '../rag/search.js';
 
 const log = logger.child('graph');
-
-const llm = new ChatOllama({
-  baseUrl: config.OLLAMA_BASE_URL,
-  model: appConfig.generation.model,
-  temperature: appConfig.generation.temperature,
-});
 
 const GraphState = Annotation.Root({
   question: Annotation<string>(),
@@ -30,10 +24,16 @@ const GraphState = Annotation.Root({
 type State = typeof GraphState.State;
 
 async function retrieve(state: State): Promise<Partial<State>> {
-  const hits = (
-    await search(state.question, appConfig.retrieval.topK, { collections: state.collections })
-  ).filter((h) => h.score >= appConfig.retrieval.minScore);
-  log.debug(`retrieve: ${hits.length} relevant hits`);
+  const { mode, topK, minScore, expandQuery: doExpand } = appConfig.retrieval;
+  // Expand the query into keywords for the lexical arm (lexical/hybrid only).
+  const lexicalTerms = mode !== 'vector' && doExpand ? await expandQuery(state.question) : [];
+  const hits = await search(state.question, topK, {
+    collections: state.collections,
+    mode,
+    minScore,
+    lexicalTerms,
+  });
+  log.debug(`retrieve(${mode}): ${hits.length} hits`);
   return { hits };
 }
 
@@ -53,7 +53,7 @@ async function generate(state: State): Promise<Partial<State>> {
   const context = hits.map((h, i) => `[${i + 1}] (${h.path})\n${h.content}`).join('\n\n');
   const user = `Documentation context:\n${context}\n\nQuestion: ${question}`;
 
-  const res = await llm.invoke([new SystemMessage(SYSTEM_PROMPT), new HumanMessage(user)]);
+  const res = await chatModel.invoke([new SystemMessage(SYSTEM_PROMPT), new HumanMessage(user)]);
   const answer = typeof res.content === 'string' ? res.content : JSON.stringify(res.content);
   const sources = [...new Set(hits.map((h) => h.path))];
 

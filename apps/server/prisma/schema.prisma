@@ -74,6 +74,8 @@ model DocChunk {
   contentHash String // sha256 of the content — to avoid re-embedding unchanged content
   // 768 = nomic-embed-text dimensionality. If the model changes, update the migration too.
   embedding   Unsupported("vector(768)")?
+  // Lexical search arm (FTS). Generated column; GIN index lives in the migration.
+  content_tsv Unsupported("tsvector")?
   createdAt   DateTime @default(now())
 
   @@unique([collection, path, chunkIndex])

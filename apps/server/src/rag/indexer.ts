@@ -58,6 +58,7 @@ export interface IndexStats {
   embedded: number;
   skipped: number;
   deleted: number;
+  failed: number;
 }
 
 export interface IndexOptions {
@@ -66,62 +67,79 @@ export interface IndexOptions {
 
 export async function indexDirectory(dir: string, opts: IndexOptions = {}): Promise<IndexStats> {
   const collection = opts.collection ?? 'markdown';
-  const stats: IndexStats = { files: 0, chunks: 0, embedded: 0, skipped: 0, deleted: 0 };
+  const stats: IndexStats = { files: 0, chunks: 0, embedded: 0, skipped: 0, deleted: 0, failed: 0 };
+  const failures: string[] = [];
   await ensureVectorIndex();
 
   for await (const file of walkFiles(dir)) {
-    const stat = await readFile(file).then((b) => b.byteLength);
-    if (stat > MAX_FILE_BYTES) continue;
-
     const rel = relative(dir, file);
-    const ext = extname(file).toLowerCase();
-    const raw = await readFile(file, 'utf8');
-    const { chunks, source } = chunkFile(ext, raw);
-    stats.files++;
-    stats.chunks += chunks.length;
-
-    // Hashes of already-indexed chunks of this file in this collection.
-    const existing = await prisma.docChunk.findMany({
-      where: { collection, path: rel },
-      select: { chunkIndex: true, contentHash: true },
-    });
-    const hashByIndex = new Map(existing.map((c) => [c.chunkIndex, c.contentHash]));
-
-    const toEmbed = chunks.filter((c) => hashByIndex.get(c.index) !== sha256(c.content));
-    let vectors: number[][] = [];
-    if (toEmbed.length > 0) {
-      vectors = await embed(toEmbed.map((c) => `search_document: ${c.content}`));
-    }
-    const vecByIndex = new Map<number, number[]>();
-    toEmbed.forEach((c, i) => {
-      const v = vectors[i];
-      if (v) vecByIndex.set(c.index, v);
-    });
-
-    for (const c of chunks) {
-      const hash = sha256(c.content);
-      if (hashByIndex.get(c.index) === hash) {
-        stats.skipped++;
+    // Isolate per-file failures (oversized chunk, transient Ollama error, ...)
+    // so one bad file is skipped+logged instead of aborting the whole run.
+    try {
+      const raw = await readFile(file, 'utf8');
+      if (Buffer.byteLength(raw) > MAX_FILE_BYTES) {
+        log.warn(`skip ${rel}: file too large`);
         continue;
       }
-      const vec = vecByIndex.get(c.index);
-      if (!vec) continue;
-      await prisma.$executeRaw(Prisma.sql`
-        INSERT INTO "DocChunk" (id, collection, source, path, "chunkIndex", content, "contentHash", embedding, "createdAt")
-        VALUES (${randomUUID()}, ${collection}, ${source}, ${rel}, ${c.index}, ${c.content}, ${hash}, ${toVectorLiteral(vec)}::vector, now())
-        ON CONFLICT (collection, path, "chunkIndex") DO UPDATE
-        SET content = EXCLUDED.content,
-            "contentHash" = EXCLUDED."contentHash",
-            embedding = EXCLUDED.embedding,
-            source = EXCLUDED.source
-      `);
-      stats.embedded++;
-    }
+      const ext = extname(file).toLowerCase();
+      const { chunks, source } = chunkFile(ext, raw);
+      stats.files++;
+      stats.chunks += chunks.length;
 
-    const del = await prisma.docChunk.deleteMany({
-      where: { collection, path: rel, chunkIndex: { gte: chunks.length } },
-    });
-    stats.deleted += del.count;
+      // Hashes of already-indexed chunks of this file in this collection.
+      const existing = await prisma.docChunk.findMany({
+        where: { collection, path: rel },
+        select: { chunkIndex: true, contentHash: true },
+      });
+      const hashByIndex = new Map(existing.map((c) => [c.chunkIndex, c.contentHash]));
+
+      const toEmbed = chunks.filter((c) => hashByIndex.get(c.index) !== sha256(c.content));
+      let vectors: number[][] = [];
+      if (toEmbed.length > 0) {
+        vectors = await embed(toEmbed.map((c) => `search_document: ${c.content}`));
+      }
+      const vecByIndex = new Map<number, number[]>();
+      toEmbed.forEach((c, i) => {
+        const v = vectors[i];
+        if (v) vecByIndex.set(c.index, v);
+      });
+
+      for (const c of chunks) {
+        const hash = sha256(c.content);
+        if (hashByIndex.get(c.index) === hash) {
+          stats.skipped++;
+          continue;
+        }
+        const vec = vecByIndex.get(c.index);
+        if (!vec) continue;
+        await prisma.$executeRaw(Prisma.sql`
+          INSERT INTO "DocChunk" (id, collection, source, path, "chunkIndex", content, "contentHash", embedding, "createdAt")
+          VALUES (${randomUUID()}, ${collection}, ${source}, ${rel}, ${c.index}, ${c.content}, ${hash}, ${toVectorLiteral(vec)}::vector, now())
+          ON CONFLICT (collection, path, "chunkIndex") DO UPDATE
+          SET content = EXCLUDED.content,
+              "contentHash" = EXCLUDED."contentHash",
+              embedding = EXCLUDED.embedding,
+              source = EXCLUDED.source
+        `);
+        stats.embedded++;
+      }
+
+      const del = await prisma.docChunk.deleteMany({
+        where: { collection, path: rel, chunkIndex: { gte: chunks.length } },
+      });
+      stats.deleted += del.count;
+    } catch (err) {
+      stats.failed++;
+      failures.push(rel);
+      log.error(`failed to index ${rel} — skipping`, (err as Error).message);
+    }
+  }
+
+  if (failures.length > 0) {
+    log.warn(
+      `${failures.length} file(s) failed: ${failures.slice(0, 10).join(', ')}` +
+        (failures.length > 10 ? ' ...' : ''),
+    );
   }
 
   log.info(`indexing complete [collection=${collection}]`, stats);

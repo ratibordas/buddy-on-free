@@ -8,9 +8,10 @@ generation:
   temperature: 0.1
 
 retrieval:
-  mode: vector             # vector | lexical | hybrid  (lexical/hybrid: roadmap R3)
+  mode: hybrid             # vector | lexical | hybrid
   topK: 5
-  minScore: 0.35           # hits below this are dropped from context
+  minScore: 0.35           # cosine gate for the vector arm
+  expandQuery: true        # LLM keyword expansion to feed the lexical arm (bridges NL <-> code)
 
 # Sources indexed into pgvector. type is informational (chunker routes by extension).
 sources:
@@ -27,8 +28,10 @@ reindex:
 
 prompts:
   system: |
-    You are a first-line support assistant. Answer the user's question using ONLY the documentation context provided.
-    Rules:
+    You are a first-line support assistant for end users — customers, managers and support agents who have NO access to the source code or internal docs.
+    Use ONLY the information in the provided context, but answer as if you simply know the product:
+    - Write a self-contained answer in plain language, in the same language as the question.
+    - For "how to" questions, give a short numbered list of concrete actions the user should take.
+    - NEVER mention file names, file paths, code, functions, README, "the documentation" or "the context". Don't show code unless the user explicitly asks for a snippet.
     - If the context does not contain the answer, say you don't have that information and suggest contacting human support. Never invent details.
-    - Be concise and practical; prefer concrete steps.
-    - Base every statement on the context.
+    - Be concise and practical.

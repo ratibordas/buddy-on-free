@@ -19,9 +19,10 @@ const schema = z.object({
     temperature: z.number().min(0).max(2).default(0.1),
   }),
   retrieval: z.object({
-    mode: z.enum(['vector', 'lexical', 'hybrid']).default('vector'),
+    mode: z.enum(['vector', 'lexical', 'hybrid']).default('hybrid'),
     topK: z.number().int().positive().default(5),
     minScore: z.number().min(0).max(1).default(0.35),
+    expandQuery: z.boolean().default(true), // LLM keyword expansion for the lexical arm
   }),
   sources: z.array(sourceSchema).default([]),
   reindex: z
