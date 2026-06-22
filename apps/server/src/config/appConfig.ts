@@ -23,6 +23,7 @@ const schema = z.object({
     topK: z.number().int().positive().default(5),
     minScore: z.number().min(0).max(1).default(0.35),
     expandQuery: z.boolean().default(true), // LLM keyword expansion for the lexical arm
+    agentic: z.boolean().default(false), // ReAct loop: model drives its own multi-step search
   }),
   sources: z.array(sourceSchema).default([]),
   reindex: z

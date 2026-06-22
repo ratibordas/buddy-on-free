@@ -12,6 +12,7 @@ retrieval:
   topK: 5
   minScore: 0.35           # cosine gate for the vector arm
   expandQuery: true        # LLM keyword expansion to feed the lexical arm (bridges NL <-> code)
+  agentic: true            # ReAct loop: the model issues its own searches and refines (multi-step)
 
 # Sources indexed into pgvector. type is informational (chunker routes by extension).
 sources:
