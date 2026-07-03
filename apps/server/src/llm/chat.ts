@@ -7,4 +7,5 @@ export const chatModel = new ChatOllama({
   baseUrl: config.OLLAMA_BASE_URL,
   model: appConfig.generation.model,
   temperature: appConfig.generation.temperature,
+  think: appConfig.generation.think,
 });

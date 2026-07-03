@@ -4,15 +4,17 @@
 # resolved against this file's directory.
 
 generation:
-  model: gemma4:e4b        # single generation model (Ollama tag); e4b on CPU, 26b on GPU
+  model: gemma4:12b        # single generation model (Ollama tag); 12b fits 16GB VRAM (5060 Ti)
   temperature: 0.1
+  think: false             # Gemma 4 reasoning mode; off for grounded QA (faster, avoids empty answers under token cap)
 
 retrieval:
   mode: hybrid             # vector | lexical | hybrid
   topK: 5
   minScore: 0.35           # cosine gate for the vector arm
   expandQuery: true        # LLM keyword expansion to feed the lexical arm (bridges NL <-> code)
-  agentic: true            # ReAct loop: the model issues its own searches and refines (multi-step)
+  agentic: false           # non-agentic hybrid (recommended for 12B); agentic needs strong model + thinking control
+  groundingCheck: true     # post-answer faithfulness check; override with a decline if unsupported (anti-hallucination)
 
 # Sources indexed into pgvector. type is informational (chunker routes by extension).
 sources:

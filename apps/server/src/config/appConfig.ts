@@ -17,6 +17,10 @@ const schema = z.object({
   generation: z.object({
     model: z.string().min(1),
     temperature: z.number().min(0).max(2).default(0.1),
+    // Thinking/reasoning mode (Gemma 4 et al). Off by default: for grounded QA it
+    // adds latency and, under a token cap, can consume the budget and return an
+    // empty answer. Enable only for tasks that clearly benefit from reasoning.
+    think: z.boolean().default(false),
   }),
   retrieval: z.object({
     mode: z.enum(['vector', 'lexical', 'hybrid']).default('hybrid'),
@@ -24,6 +28,7 @@ const schema = z.object({
     minScore: z.number().min(0).max(1).default(0.35),
     expandQuery: z.boolean().default(true), // LLM keyword expansion for the lexical arm
     agentic: z.boolean().default(false), // ReAct loop: model drives its own multi-step search
+    groundingCheck: z.boolean().default(true), // verify the answer is supported by context (anti-hallucination)
   }),
   sources: z.array(sourceSchema).default([]),
   reindex: z

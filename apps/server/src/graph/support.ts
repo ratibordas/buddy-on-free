@@ -11,6 +11,7 @@ import { chatModel } from '../llm/chat.js';
 import { expandQuery } from '../rag/expand.js';
 import { search, type SearchHit } from '../rag/search.js';
 import { runAgenticGraph } from './agentic.js';
+import { verifyGrounded, DECLINE } from './guard.js';
 
 const log = logger.child('graph');
 
@@ -81,8 +82,18 @@ export async function runSupportGraph(
   collections: string[] = [],
 ): Promise<SupportResult> {
   // Agentic mode: the model drives its own multi-step retrieval (ReAct loop).
-  if (appConfig.retrieval.agentic) return runAgenticGraph(question, collections);
+  let result: SupportResult;
+  if (appConfig.retrieval.agentic) {
+    result = await runAgenticGraph(question, collections);
+  } else {
+    const out = await compiled.invoke({ question, collections });
+    result = { answer: out.answer, sources: out.sources, hits: out.hits };
+  }
 
-  const out = await compiled.invoke({ question, collections });
-  return { answer: out.answer, sources: out.sources, hits: out.hits };
+  // Anti-hallucination: if the answer isn't supported by the retrieved context, decline.
+  if (appConfig.retrieval.groundingCheck && result.hits.length > 0) {
+    const grounded = await verifyGrounded(result.answer, result.hits);
+    if (!grounded) return { answer: DECLINE, sources: [], hits: result.hits };
+  }
+  return result;
 }
