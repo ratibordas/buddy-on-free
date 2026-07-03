@@ -26,6 +26,13 @@ const schema = z.object({
     mode: z.enum(['vector', 'lexical', 'hybrid']).default('hybrid'),
     topK: z.number().int().positive().default(5),
     minScore: z.number().min(0).max(1).default(0.35),
+    // Preset that sets the LLM-pass flags below (speed ↔ quality). Trades how many
+    // chat calls run per question. 'custom' keeps the explicit flags as written.
+    //   fast     = generate only                     (1 call)
+    //   balanced = generate + grounding guard         (2 calls)
+    //   quality  = expand + generate + guard          (3 calls, non-agentic; best on 12B)
+    //   max      = quality + agentic ReAct loop       (needs a strong model, Tier 2+)
+    profile: z.enum(['fast', 'balanced', 'quality', 'max', 'custom']).default('balanced'),
     expandQuery: z.boolean().default(true), // LLM keyword expansion for the lexical arm
     agentic: z.boolean().default(false), // ReAct loop: model drives its own multi-step search
     groundingCheck: z.boolean().default(true), // verify the answer is supported by context (anti-hallucination)
@@ -59,6 +66,18 @@ function load(): z.infer<typeof schema> {
   }
 
   const cfg = parsed.data;
+
+  // Apply the retrieval profile (unless 'custom', which keeps the explicit flags).
+  const PROFILES = {
+    fast: { expandQuery: false, groundingCheck: false, agentic: false },
+    balanced: { expandQuery: false, groundingCheck: true, agentic: false },
+    quality: { expandQuery: true, groundingCheck: true, agentic: false },
+    max: { expandQuery: true, groundingCheck: true, agentic: true },
+  } as const;
+  if (cfg.retrieval.profile !== 'custom') {
+    Object.assign(cfg.retrieval, PROFILES[cfg.retrieval.profile]);
+  }
+
   // Resolve relative source paths against the config file's directory.
   const base = dirname(CONFIG_PATH);
   cfg.sources = cfg.sources.map((s) => ({

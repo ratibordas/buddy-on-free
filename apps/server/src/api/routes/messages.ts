@@ -8,6 +8,7 @@ const messageSchema = z.object({
   text: z.string().min(1),
   channel: z.nativeEnum(MessageChannel).default(MessageChannel.api),
   externalId: z.string().optional(),
+  callbackUrl: z.string().url().optional(), // POSTed with the result when ready
 });
 
 export async function registerMessageRoutes(app: FastifyInstance): Promise<void> {
@@ -23,6 +24,7 @@ export async function registerMessageRoutes(app: FastifyInstance): Promise<void>
       text: parsed.data.text,
       userId,
       externalId: parsed.data.externalId,
+      callbackUrl: parsed.data.callbackUrl,
     });
     return reply.code(202).send(result);
   });

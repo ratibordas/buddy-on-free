@@ -12,9 +12,13 @@ retrieval:
   mode: hybrid             # vector | lexical | hybrid
   topK: 5
   minScore: 0.35           # cosine gate for the vector arm
+  # Speed <-> quality preset (sets the LLM-pass flags below). Chat calls per question:
+  #   fast (1) | balanced (2) | quality (3) | max (3 + agentic loop) | custom (use flags below)
+  profile: balanced
+  # Used only when profile: custom
   expandQuery: true        # LLM keyword expansion to feed the lexical arm (bridges NL <-> code)
-  agentic: false           # non-agentic hybrid (recommended for 12B); agentic needs strong model + thinking control
-  groundingCheck: true     # post-answer faithfulness check; override with a decline if unsupported (anti-hallucination)
+  agentic: false           # ReAct loop; needs a strong model (Tier 2+), not 12B
+  groundingCheck: true     # post-answer faithfulness check; decline if unsupported (anti-hallucination)
 
 # Sources indexed into pgvector. type is informational (chunker routes by extension).
 sources:

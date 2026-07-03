@@ -7,6 +7,7 @@ import { runSupportGraph } from '../graph/support.js';
 import { config } from '../config/index.js';
 import { logger } from '../lib/logger.js';
 import { QUEUE, type JobMessage } from '../types/index.js';
+import { deliverWebhook, type WebhookPayload } from './webhook.js';
 
 const log = logger.child('worker');
 
@@ -15,7 +16,7 @@ export async function startWorker(): Promise<void> {
     queue: QUEUE.jobs,
     prefetch: config.WORKER_CONCURRENCY,
     handler: async (msg, channel) => {
-      const { jobId } = JSON.parse(msg.content.toString()) as JobMessage;
+      const { jobId, callbackUrl } = JSON.parse(msg.content.toString()) as JobMessage;
 
       const job = await prisma.job.findUnique({ where: { id: jobId } });
       if (!job) {
@@ -25,6 +26,7 @@ export async function startWorker(): Promise<void> {
       }
 
       const startedMs = Date.now();
+      let result: WebhookPayload | null = null;
       try {
         await prisma.job.update({
           where: { id: jobId },
@@ -43,19 +45,24 @@ export async function startWorker(): Promise<void> {
             processingMs: Date.now() - startedMs,
           },
         });
+        result = { jobId, status: 'done', answer, sources, error: null };
         log.info(`job ${jobId} done in ${Date.now() - startedMs}ms`);
       } catch (err) {
-        log.error(`job ${jobId} failed`, (err as Error).message);
+        const message = (err as Error).message;
+        log.error(`job ${jobId} failed`, message);
         await prisma.job.update({
           where: { id: jobId },
           data: {
             status: 'failed',
-            error: (err as Error).message,
+            error: message,
             finishedAt: new Date(),
             processingMs: Date.now() - startedMs,
           },
         });
+        result = { jobId, status: 'failed', answer: null, sources: null, error: message };
       } finally {
+        // Push the result to the client's webhook if one was provided (no SSE/WS).
+        if (callbackUrl && result) void deliverWebhook(callbackUrl, result);
         // Ack in any case: we don't want to retry endlessly, the failed
         // status is already recorded in the DB.
         channel.ack(msg);

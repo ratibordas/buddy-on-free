@@ -19,7 +19,7 @@ export async function enqueueMessage(input: IncomingMessage): Promise<EnqueueRes
   const { position, etaSeconds } = await estimate(job.createdAt);
   await prisma.job.update({ where: { id: job.id }, data: { position, etaSeconds } });
 
-  rabbitmq.publish(QUEUE.jobs, { jobId: job.id });
+  rabbitmq.publish(QUEUE.jobs, { jobId: job.id, callbackUrl: input.callbackUrl });
 
   return { jobId: job.id, position, etaSeconds };
 }
