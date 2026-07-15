@@ -14,6 +14,7 @@
     "index": "tsx src/scripts/index-docs.ts",
     "search": "tsx src/scripts/search.ts",
     "ask": "tsx src/scripts/ask.ts",
+    "docgen": "tsx src/scripts/docgen.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy"
@@ -40,6 +41,7 @@
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^22.10.1",
     "@types/node-cron": "^3.0.11",
+    "codebase-memory-mcp": "^0.9.0",
     "prisma": "^6.1.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"

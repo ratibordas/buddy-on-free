@@ -49,6 +49,18 @@ Switching the model tier (see [SIZING.md](SIZING.md)) is a one-line change.
 On boot the server applies migrations, indexes the configured sources — it never
 answers against an empty index — and schedules a daily incremental re-index.
 
+### Supported source languages
+
+Indexing routes by file type:
+
+- **Docs** — Markdown (`.md`) via the heading-aware chunker.
+- **Code (AST chunking, whole functions)** — Go, TypeScript/TSX, JavaScript/JSX,
+  Python (tree-sitter). Any other code language falls back to a structure-aware
+  chunker (still usable, just not AST-precise).
+- **Structural graph** (impact analysis, used offline) is chosen per language via
+  `structuralByLanguage` in the config: **goda**/GoGraph for Go, **codebase-memory**
+  for TypeScript/JavaScript. Set a source's `language` (or override with `structural`).
+
 ## Quick start — Docker
 
 ```bash

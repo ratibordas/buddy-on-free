@@ -9,7 +9,8 @@ import { prisma } from '../db/prisma.js';
 import { logger } from '../lib/logger.js';
 import { sha256, toVectorLiteral } from '../helpers/index.js';
 import { embed } from '../llm/ollama.js';
-import { chunkMarkdown, chunkCode, type Chunk } from './chunker.js';
+import { chunkMarkdown, type Chunk } from './chunker.js';
+import { chunkCodeAst } from './astChunker.js';
 
 const log = logger.child('indexer');
 
@@ -39,9 +40,15 @@ async function* walkFiles(dir: string): AsyncGenerator<string> {
   }
 }
 
-function chunkFile(ext: string, raw: string): { chunks: Chunk[]; source: string } {
+async function chunkFile(
+  file: string,
+  ext: string,
+  raw: string,
+): Promise<{ chunks: Chunk[]; source: string }> {
+  // Docs: split by headings. Code: AST via tree-sitter helper (falls back to the
+  // structure-aware chunker if the venv is absent). See astChunker.
   if (DOC_EXT.has(ext)) return { chunks: chunkMarkdown(raw), source: 'markdown' };
-  return { chunks: chunkCode(raw), source: 'code' };
+  return { chunks: await chunkCodeAst(file, raw, ext), source: 'code' };
 }
 
 // HNSW index for fast cosine search. IF NOT EXISTS — safe to run repeatedly.
@@ -81,7 +88,7 @@ export async function indexDirectory(dir: string, opts: IndexOptions = {}): Prom
         continue;
       }
       const ext = extname(file).toLowerCase();
-      const { chunks, source } = chunkFile(ext, raw);
+      const { chunks, source } = await chunkFile(file, ext, raw);
       stats.files++;
       stats.chunks += chunks.length;
 

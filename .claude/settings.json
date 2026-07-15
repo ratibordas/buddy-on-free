@@ -1,0 +1,42 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(.claude/scripts/quiet.sh:*)",
+      "Skill(token-diet)",
+      "Bash(npm run typecheck:*)",
+      "Bash(npm run build:*)",
+      "Bash(docker compose:*)"
+    ],
+    "deny": [
+      "Read(./apps/server/.env)",
+      "Edit(**/.env)",
+      "Write(**/.env)",
+      "Read(./**/*.pem)",
+      "Read(./**/*.key)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "FILE=$(jq -r '.tool_input.file_path // empty'); case \"$FILE\" in */dist/*|*/node_modules/*|*/.prisma/*|*/generated/*) printf '{\"decision\":\"block\",\"reason\":\"Generated/built artifact (%s) — do not edit by hand; change the source and regenerate.\"}' \"$FILE\"; exit 0;; esac; exit 0"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "FILE=$(jq -r '.tool_input.file_path // empty'); case \"$FILE\" in *.ts|*.tsx) if [ -x apps/server/node_modules/.bin/prettier ]; then (cd apps/server && ./node_modules/.bin/prettier --write \"$FILE\" >/dev/null 2>&1); fi;; esac; exit 0"
+          }
+        ]
+      }
+    ]
+  }
+}

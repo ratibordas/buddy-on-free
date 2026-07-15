@@ -20,14 +20,29 @@ retrieval:
   agentic: false           # ReAct loop; needs a strong model (Tier 2+), not 12B
   groundingCheck: true     # post-answer faithfulness check; decline if unsupported (anti-hallucination)
 
-# Sources indexed into pgvector. type is informational (chunker routes by extension).
+# Structural/graph provider chosen by language (a source's own `structural` overrides).
+#   goda | gograph -> Go   |   codebase-memory -> TS/JS (polyglot)   |   none
+structuralByLanguage:
+  go: goda
+  typescript: codebase-memory
+  javascript: codebase-memory
+
+# Sources indexed into pgvector. Chunkers route by file extension:
+#   docs (.md) -> markdown chunker
+#   code with AST support (go, ts, tsx, js, jsx, python) -> tree-sitter AST chunks (whole functions)
+#   other code -> structure-aware fallback chunker
 sources:
   - collection: handbook
     type: docs
     path: ../../sample-docs
-  # - collection: sk-tours
+  # - collection: crm-api
   #   type: code
-  #   path: /absolute/path/to/repo
+  #   language: go            # -> structural: goda (via structuralByLanguage)
+  #   path: /absolute/path/to/go-repo
+  # - collection: crm-front
+  #   type: code
+  #   language: typescript    # -> structural: codebase-memory
+  #   path: /absolute/path/to/ts-repo
 
 reindex:
   onStartup: true          # ensure non-empty index before serving; refresh on boot

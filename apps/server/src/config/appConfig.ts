@@ -3,13 +3,21 @@ import { readFileSync } from 'node:fs';
 import { resolve, dirname, isAbsolute } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
+import type { StructuralProviderId } from '../structural/types.js';
 
 const CONFIG_PATH = resolve(process.cwd(), process.env.BUDDY_CONFIG ?? 'buddy.config.yaml');
+
+const STRUCTURAL_PROVIDERS = ['none', 'goda', 'gograph', 'codebase-memory'] as const;
 
 const sourceSchema = z.object({
   collection: z.string().min(1),
   type: z.enum(['docs', 'code']),
   path: z.string().min(1),
+  // Source language (go | typescript | javascript | python | ...). Used to pick the
+  // structural provider from `structuralByLanguage` when `structural` is not set.
+  language: z.string().optional(),
+  // Explicit structural/graph provider for this source (overrides structuralByLanguage).
+  structural: z.enum(STRUCTURAL_PROVIDERS).optional(),
 });
 
 const schema = z.object({
@@ -37,6 +45,8 @@ const schema = z.object({
     groundingCheck: z.boolean().default(true), // verify the answer is supported by context (anti-hallucination)
   }),
   sources: z.array(sourceSchema).default([]),
+  // Default structural provider per language (a source's own `structural` overrides).
+  structuralByLanguage: z.record(z.string(), z.enum(STRUCTURAL_PROVIDERS)).default({}),
   reindex: z
     .object({
       onStartup: z.boolean().default(true),
@@ -88,3 +98,16 @@ function load(): z.infer<typeof schema> {
 
 export const appConfig = load();
 export type AppConfig = typeof appConfig;
+
+/** Effective structural provider for a source: explicit override, else by language, else none. */
+export function resolveStructural(source: {
+  language?: string;
+  structural?: StructuralProviderId;
+}): StructuralProviderId {
+  if (source.structural) return source.structural;
+  if (source.language) {
+    const byLang = appConfig.structuralByLanguage[source.language];
+    if (byLang) return byLang;
+  }
+  return 'none';
+}
