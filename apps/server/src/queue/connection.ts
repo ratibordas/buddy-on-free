@@ -1,13 +1,6 @@
-// Resilient connection to RabbitMQ.
-//
-// Guarantees on broker disconnect/restart:
-//  - auto-reconnect with exponential backoff;
-//  - the channel is recreated;
-//  - the entire topology (exchange/queue) is re-declared;
-//  - ALL consumers are re-subscribed automatically.
-//
-// From the outside we only work through registerTopology / addConsumer / publish —
-// they survive reconnects transparently.
+// RabbitMQ connection that survives broker restarts: reconnect with backoff,
+// channel recreated, topology re-declared, consumers re-subscribed. Callers only
+// touch registerTopology / addConsumer / publish.
 import amqp from 'amqplib';
 import { config } from '../config/index.js';
 import { logger } from '../lib/logger.js';

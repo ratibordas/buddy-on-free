@@ -1,4 +1,3 @@
-// Shared generation model (Ollama). Model/temperature come from buddy.config.yaml.
 import { ChatOllama } from '@langchain/ollama';
 import { config } from '../config/index.js';
 import { appConfig } from '../config/appConfig.js';

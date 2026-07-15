@@ -1,5 +1,3 @@
-// Shared application types and DTOs. Domain model enums come from the Prisma client,
-// here — transport/application-level types.
 import type { MessageChannel } from '@prisma/client';
 
 /** Normalized incoming message from any source. */

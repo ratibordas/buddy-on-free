@@ -1,8 +1,6 @@
-// Grounding guard (anti-hallucination): after an answer is produced, verify that
-// every factual claim in it is supported by the retrieved context. If not, we
-// replace the answer with a safe decline. This is a faithfulness check — more
-// robust than prompt-only grounding, and it covers both the simple and agentic
-// paths (agentic mode in particular tends to loosen grounding).
+// Post-answer faithfulness check: if the answer isn't supported by the retrieved
+// context, swap it for a safe decline. Prompt-only grounding wasn't reliable,
+// agentic mode especially tends to loosen it.
 import { SystemMessage, HumanMessage } from '@langchain/core/messages';
 import { chatModel } from '../llm/chat.js';
 import { logger } from '../lib/logger.js';

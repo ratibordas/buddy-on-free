@@ -1,7 +1,6 @@
-// Documentation and code indexer: walks the files in a directory, splits them into
-// chunks (markdown — by headings, code — by lines), computes embeddings via Ollama
-// and stores them in pgvector. Unchanged chunks (by sha256) are not re-embedded.
-// Stale chunks are removed. Sources are separated by a logical collection.
+// Walks a directory, chunks files (markdown by headings, code by lines), embeds
+// via Ollama, stores in pgvector. sha256 dedup: unchanged chunks are skipped,
+// stale ones deleted. Sources are separated by collection.
 import { readFile, readdir } from 'node:fs/promises';
 import { join, relative, extname } from 'node:path';
 import { randomUUID } from 'node:crypto';

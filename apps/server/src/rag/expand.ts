@@ -1,7 +1,5 @@
-// LLM query expansion: turns a natural-language question into search keywords
-// (synonyms, likely code identifiers, concrete implied values). This bridges the
-// gap between how users ask and how code/docs are written — feeding the lexical
-// arm of hybrid retrieval so e.g. "weekend" can reach code that says "Saturday".
+// Query expansion for the lexical arm: turn a question into keywords (synonyms,
+// likely identifiers) so "weekend" can reach code that says "Saturday".
 import { SystemMessage, HumanMessage } from '@langchain/core/messages';
 import { chatModel } from '../llm/chat.js';
 import { logger } from '../lib/logger.js';

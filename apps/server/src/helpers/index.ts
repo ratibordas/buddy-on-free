@@ -1,11 +1,7 @@
 import { createHash } from 'node:crypto';
-
-/** Pause for the given number of milliseconds. */
 export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
-
-/** sha256 of a string (for content hashing of chunks, etc.). */
 export function sha256(input: string): string {
   return createHash('sha256').update(input).digest('hex');
 }

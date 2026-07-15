@@ -1,5 +1,5 @@
-// Thin Ollama client on top of native fetch (Node 22+).
-// Timeouts + retries with backoff — Ollama over the network can flicker.
+// Ollama over the network can flicker, so every call gets a timeout and retries
+// with backoff.
 import { config } from '../config/index.js';
 import { logger } from '../lib/logger.js';
 import { backoff, sleep } from '../helpers/index.js';

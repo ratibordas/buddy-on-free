@@ -1,6 +1,5 @@
-// Re-index scheduling. RabbitMQ is not a scheduler, so node-cron triggers it by
-// publishing a reindex message; a dedicated consumer runs the actual indexing
-// (decoupled, survives restarts, runs on a single worker via prefetch=1).
+// node-cron publishes a reindex message (RabbitMQ is not a scheduler); a
+// dedicated consumer with prefetch=1 runs the actual indexing.
 import cron from 'node-cron';
 import { rabbitmq } from '../queue/connection.js';
 import { appConfig } from '../config/appConfig.js';

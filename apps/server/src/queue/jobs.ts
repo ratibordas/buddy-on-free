@@ -1,4 +1,3 @@
-// Accepting a message into the queue and returning its status.
 import { prisma } from '../db/prisma.js';
 import { rabbitmq } from './connection.js';
 import { estimate } from './stats.js';

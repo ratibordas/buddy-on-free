@@ -1,8 +1,4 @@
-// LangGraph graph for the first-line support: retrieve -> generate.
-//
-//   question --> [retrieve] --(RAG hits)--> [generate] --> answer + sources
-//
-// RAG search comes from rag/search (our pgvector), generation — ChatOllama.
+// The main answering graph: retrieve -> generate.
 import { Annotation, StateGraph } from '@langchain/langgraph';
 import { SystemMessage, HumanMessage } from '@langchain/core/messages';
 import { appConfig } from '../config/appConfig.js';

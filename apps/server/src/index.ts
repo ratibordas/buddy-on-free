@@ -15,12 +15,12 @@ const log = logger.child('main');
 async function main(): Promise<void> {
   registerShutdownSignals();
 
-  // 1. DB — the connection is verified by the first query; Prisma connects lazily.
+  // Prisma connects lazily; the first query verifies the connection.
   await prisma.$connect();
   onShutdown('prisma', disconnectDb);
   log.info('Postgres connected');
 
-  // 2. RabbitMQ — declare the topology (job + reindex queues). Reconnect handled internally.
+  // RabbitMQ topology (job + reindex queues); reconnects are handled inside.
   await rabbitmq.connect();
   await rabbitmq.registerTopology(async (channel) => {
     await channel.assertQueue(QUEUE.jobs, { durable: true });
@@ -28,22 +28,18 @@ async function main(): Promise<void> {
   });
   onShutdown('rabbitmq', () => rabbitmq.close());
 
-  // 3. Workers — in the same process (sufficient for the free version; later it's
-  //    easy to move them to a separate process/deployment).
+  // Workers run in-process; easy to split into a separate deployment later.
   await startWorker();
   await startReindexConsumer();
 
-  // 4. Indexing — make sure no configured collection is empty before serving,
-  //    so we never answer against an empty index.
+  // Never serve against an empty index.
   await ensureSeedIndex();
-
-  // 5. HTTP server.
   const app = await buildServer();
   await app.listen({ host: config.HOST, port: config.PORT });
   onShutdown('http', () => app.close());
   log.info(`server listening on http://${config.HOST}:${config.PORT}`);
 
-  // 6. Background refresh on boot + scheduled re-index.
+  // Refresh on boot + scheduled re-index.
   if (appConfig.reindex.onStartup) triggerReindex('startup');
   scheduleReindex();
 }

@@ -1,6 +1,5 @@
-// Webhook delivery: POST the job result to a client-supplied callback URL when
-// the answer is ready. Used instead of SSE/WebSocket for push delivery.
-// Failures are retried with backoff and never propagate into the worker.
+// POST the result to the client's callback URL when the answer is ready.
+// Retries with backoff; failures never reach the worker.
 import { logger } from '../lib/logger.js';
 import { backoff, sleep } from '../helpers/index.js';
 

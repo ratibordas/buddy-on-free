@@ -1,5 +1,5 @@
-// Indexing service: drives the RAG indexer over the sources from buddy.config.yaml.
-// Indexing is incremental (sha256 dedup), so re-running is cheap.
+// Drives the indexer over the sources from buddy.config.yaml. Incremental
+// (sha256), so re-running is cheap.
 import { prisma } from '../db/prisma.js';
 import { appConfig } from '../config/appConfig.js';
 import { indexDirectory } from '../rag/indexer.js';

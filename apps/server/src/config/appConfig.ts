@@ -1,5 +1,4 @@
-// Behavior config loaded from buddy.config.yaml (validated with zod at startup).
-// Separate from src/config/index.ts, which holds infra/secrets from .env.
+// Behavior config (buddy.config.yaml). Infra and secrets stay in .env — see config/index.ts.
 import { readFileSync } from 'node:fs';
 import { resolve, dirname, isAbsolute } from 'node:path';
 import { parse as parseYaml } from 'yaml';
@@ -26,7 +25,7 @@ const schema = z.object({
     mode: z.enum(['vector', 'lexical', 'hybrid']).default('hybrid'),
     topK: z.number().int().positive().default(5),
     minScore: z.number().min(0).max(1).default(0.35),
-    // Preset that sets the LLM-pass flags below (speed ↔ quality). Trades how many
+    // Preset that sets the LLM-pass flags below (speed vs quality). Trades how many
     // chat calls run per question. 'custom' keeps the explicit flags as written.
     //   fast     = generate only                     (1 call)
     //   balanced = generate + grounding guard         (2 calls)

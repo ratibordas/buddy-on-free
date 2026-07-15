@@ -1,10 +1,6 @@
-// Agentic retrieval (ReAct loop): the model decides what to search, reads the
-// results, and refines its queries until it can answer — instead of a single
-// fixed top-K lookup. This closes the "symptom -> mechanism" gap (e.g. the user
-// asks about a number "not being visible", the model searches "encryption").
-//
-//   question -> [agent] --tool_calls--> [tools: search] --> [agent] -> ... -> answer
-//
+// ReAct loop: the model decides what to search and refines queries until it can
+// answer, instead of one fixed top-K lookup. Closes the symptom->mechanism gap
+// (user says a number is "not visible" -> the model searches "encryption").
 // State (messages, hits) lives in the graph invocation, so it is concurrency-safe.
 import { Annotation, StateGraph, START, END } from '@langchain/langgraph';
 import {

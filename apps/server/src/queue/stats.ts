@@ -1,6 +1,5 @@
-// Throughput estimation for computing ETA.
-// We take the moving average of processing time straight from the DB (last N
-// completed jobs) — survives a restart, requires no separate state.
+// ETA: moving average of processing time over the last N completed jobs, read
+// straight from the DB. Survives restarts, no separate state.
 import { prisma } from '../db/prisma.js';
 import { config } from '../config/index.js';
 

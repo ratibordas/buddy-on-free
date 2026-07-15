@@ -1,6 +1,5 @@
-// Worker: pulls jobs from RabbitMQ and runs them through the support graph.
-// Concurrency is set by prefetch = WORKER_CONCURRENCY (that many jobs in flight
-// at once). Re-subscribes automatically after a broker reconnect.
+// Pulls jobs from RabbitMQ and runs them through the support graph.
+// Concurrency = prefetch (WORKER_CONCURRENCY).
 import { rabbitmq } from './connection.js';
 import { prisma } from '../db/prisma.js';
 import { runSupportGraph } from '../graph/support.js';
