@@ -4,7 +4,7 @@
 # resolved against this file's directory.
 
 generation:
-  model: gemma4:12b        # single generation model (Ollama tag); 12b fits 16GB VRAM (5060 Ti)
+  model: gemma4:12b        # serving model — fast on 16GB. (26b offloads/slow here; use it for docgen, not serving)
   temperature: 0.1
   think: false             # Gemma 4 reasoning mode; off for grounded QA (faster, avoids empty answers under token cap)
 
