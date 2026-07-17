@@ -71,6 +71,60 @@ export interface IndexOptions {
   collection?: string;
 }
 
+// Upsert one document's chunks into pgvector: sha256-dedup (skip unchanged),
+// embed only what changed, delete now-stale trailing chunks. Shared by the
+// file walker (indexDirectory) and the remote connectors (indexDocuments).
+async function persistChunks(
+  collection: string,
+  path: string,
+  source: string,
+  chunks: Chunk[],
+): Promise<{ embedded: number; skipped: number; deleted: number }> {
+  const existing = await prisma.docChunk.findMany({
+    where: { collection, path },
+    select: { chunkIndex: true, contentHash: true },
+  });
+  const hashByIndex = new Map(existing.map((c) => [c.chunkIndex, c.contentHash]));
+
+  const toEmbed = chunks.filter((c) => hashByIndex.get(c.index) !== sha256(c.content));
+  let vectors: number[][] = [];
+  if (toEmbed.length > 0) {
+    vectors = await embed(toEmbed.map((c) => `search_document: ${c.content}`));
+  }
+  const vecByIndex = new Map<number, number[]>();
+  toEmbed.forEach((c, i) => {
+    const v = vectors[i];
+    if (v) vecByIndex.set(c.index, v);
+  });
+
+  let embedded = 0;
+  let skipped = 0;
+  for (const c of chunks) {
+    const hash = sha256(c.content);
+    if (hashByIndex.get(c.index) === hash) {
+      skipped++;
+      continue;
+    }
+    const vec = vecByIndex.get(c.index);
+    if (!vec) continue;
+    await prisma.$executeRaw(Prisma.sql`
+      INSERT INTO "DocChunk" (id, collection, source, path, "chunkIndex", content, "contentHash", embedding, "createdAt")
+      VALUES (${randomUUID()}, ${collection}, ${source}, ${path}, ${c.index}, ${c.content}, ${hash}, ${toVectorLiteral(vec)}::vector, now())
+      ON CONFLICT (collection, path, "chunkIndex") DO UPDATE
+      SET content = EXCLUDED.content,
+          "contentHash" = EXCLUDED."contentHash",
+          embedding = EXCLUDED.embedding,
+          source = EXCLUDED.source
+    `);
+    embedded++;
+  }
+
+  const del = await prisma.docChunk.deleteMany({
+    where: { collection, path, chunkIndex: { gte: chunks.length } },
+  });
+  return { embedded, skipped, deleted: del.count };
+}
+
 export async function indexDirectory(dir: string, opts: IndexOptions = {}): Promise<IndexStats> {
   const collection = opts.collection ?? 'markdown';
   const stats: IndexStats = { files: 0, chunks: 0, embedded: 0, skipped: 0, deleted: 0, failed: 0 };
@@ -91,49 +145,10 @@ export async function indexDirectory(dir: string, opts: IndexOptions = {}): Prom
       const { chunks, source } = await chunkFile(file, ext, raw);
       stats.files++;
       stats.chunks += chunks.length;
-
-      // Hashes of already-indexed chunks of this file in this collection.
-      const existing = await prisma.docChunk.findMany({
-        where: { collection, path: rel },
-        select: { chunkIndex: true, contentHash: true },
-      });
-      const hashByIndex = new Map(existing.map((c) => [c.chunkIndex, c.contentHash]));
-
-      const toEmbed = chunks.filter((c) => hashByIndex.get(c.index) !== sha256(c.content));
-      let vectors: number[][] = [];
-      if (toEmbed.length > 0) {
-        vectors = await embed(toEmbed.map((c) => `search_document: ${c.content}`));
-      }
-      const vecByIndex = new Map<number, number[]>();
-      toEmbed.forEach((c, i) => {
-        const v = vectors[i];
-        if (v) vecByIndex.set(c.index, v);
-      });
-
-      for (const c of chunks) {
-        const hash = sha256(c.content);
-        if (hashByIndex.get(c.index) === hash) {
-          stats.skipped++;
-          continue;
-        }
-        const vec = vecByIndex.get(c.index);
-        if (!vec) continue;
-        await prisma.$executeRaw(Prisma.sql`
-          INSERT INTO "DocChunk" (id, collection, source, path, "chunkIndex", content, "contentHash", embedding, "createdAt")
-          VALUES (${randomUUID()}, ${collection}, ${source}, ${rel}, ${c.index}, ${c.content}, ${hash}, ${toVectorLiteral(vec)}::vector, now())
-          ON CONFLICT (collection, path, "chunkIndex") DO UPDATE
-          SET content = EXCLUDED.content,
-              "contentHash" = EXCLUDED."contentHash",
-              embedding = EXCLUDED.embedding,
-              source = EXCLUDED.source
-        `);
-        stats.embedded++;
-      }
-
-      const del = await prisma.docChunk.deleteMany({
-        where: { collection, path: rel, chunkIndex: { gte: chunks.length } },
-      });
-      stats.deleted += del.count;
+      const r = await persistChunks(collection, rel, source, chunks);
+      stats.embedded += r.embedded;
+      stats.skipped += r.skipped;
+      stats.deleted += r.deleted;
     } catch (err) {
       stats.failed++;
       failures.push(rel);
@@ -149,5 +164,52 @@ export async function indexDirectory(dir: string, opts: IndexOptions = {}): Prom
   }
 
   log.info(`indexing complete [collection=${collection}]`, stats);
+  return stats;
+}
+
+// A single fetched document from a remote connector (Notion, Confluence, ...).
+// `path` is a stable per-document id (page id / slug) used as the dedup key;
+// `content` is already-normalized markdown/plain text.
+export interface DocRecord {
+  path: string;
+  content: string;
+}
+
+// Index a stream of remote documents into a collection. Same sha256-incremental
+// upsert as indexDirectory, but content is chunked with the markdown chunker
+// (connectors normalize to markdown/text) and there is no filesystem walk.
+export async function indexDocuments(
+  collection: string,
+  source: string,
+  docs: AsyncIterable<DocRecord>,
+): Promise<IndexStats> {
+  const stats: IndexStats = { files: 0, chunks: 0, embedded: 0, skipped: 0, deleted: 0, failed: 0 };
+  const failures: string[] = [];
+  await ensureVectorIndex();
+
+  for await (const doc of docs) {
+    try {
+      const chunks = chunkMarkdown(doc.content);
+      stats.files++;
+      stats.chunks += chunks.length;
+      const r = await persistChunks(collection, doc.path, source, chunks);
+      stats.embedded += r.embedded;
+      stats.skipped += r.skipped;
+      stats.deleted += r.deleted;
+    } catch (err) {
+      stats.failed++;
+      failures.push(doc.path);
+      log.error(`failed to index ${doc.path} — skipping`, (err as Error).message);
+    }
+  }
+
+  if (failures.length > 0) {
+    log.warn(
+      `${failures.length} document(s) failed: ${failures.slice(0, 10).join(', ')}` +
+        (failures.length > 10 ? ' ...' : ''),
+    );
+  }
+
+  log.info(`indexing complete [collection=${collection}, source=${source}]`, stats);
   return stats;
 }

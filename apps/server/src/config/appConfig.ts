@@ -9,16 +9,26 @@ const CONFIG_PATH = resolve(process.cwd(), process.env.BUDDY_CONFIG ?? 'buddy.co
 
 const STRUCTURAL_PROVIDERS = ['none', 'goda', 'gograph', 'codebase-memory'] as const;
 
-const sourceSchema = z.object({
-  collection: z.string().min(1),
-  type: z.enum(['docs', 'code']),
-  path: z.string().min(1),
-  // Source language (go | typescript | javascript | python | ...). Used to pick the
-  // structural provider from `structuralByLanguage` when `structural` is not set.
-  language: z.string().optional(),
-  // Explicit structural/graph provider for this source (overrides structuralByLanguage).
-  structural: z.enum(STRUCTURAL_PROVIDERS).optional(),
-});
+const sourceSchema = z
+  .object({
+    collection: z.string().min(1),
+    // Local sources read from disk: docs (markdown chunker) | code (AST chunker).
+    // Remote doc connectors (credentials in .env): notion | confluence.
+    type: z.enum(['docs', 'code', 'notion', 'confluence']).default('docs'),
+    // Filesystem path — required for docs/code, ignored for remote connectors.
+    path: z.string().min(1).optional(),
+    // Source language (go | typescript | javascript | python | ...). Used to pick the
+    // structural provider from `structuralByLanguage` when `structural` is not set.
+    language: z.string().optional(),
+    // Explicit structural/graph provider for this source (overrides structuralByLanguage).
+    structural: z.enum(STRUCTURAL_PROVIDERS).optional(),
+    // Remote connector scope (what to pull). Auth tokens live in .env, never here.
+    space: z.string().optional(), // Confluence space key
+    database: z.string().optional(), // Notion database id (optional; else all shared pages)
+  })
+  .refine((s) => (s.type === 'docs' || s.type === 'code' ? !!s.path : true), {
+    message: 'sources of type docs/code require a `path`',
+  });
 
 const schema = z.object({
   generation: z.object({
@@ -88,10 +98,11 @@ function load(): z.infer<typeof schema> {
   }
 
   // Resolve relative source paths against the config file's directory.
+  // Remote connectors (notion/confluence) have no path — leave them untouched.
   const base = dirname(CONFIG_PATH);
   cfg.sources = cfg.sources.map((s) => ({
     ...s,
-    path: isAbsolute(s.path) ? s.path : resolve(base, s.path),
+    path: s.path ? (isAbsolute(s.path) ? s.path : resolve(base, s.path)) : s.path,
   }));
   return cfg;
 }

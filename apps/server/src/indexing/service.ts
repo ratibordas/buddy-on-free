@@ -2,7 +2,7 @@
 // (sha256), so re-running is cheap.
 import { prisma } from '../db/prisma.js';
 import { appConfig } from '../config/appConfig.js';
-import { indexDirectory } from '../rag/indexer.js';
+import { indexSource, type SourceSpec } from '../rag/connectors/index.js';
 import { logger } from '../lib/logger.js';
 
 const log = logger.child('indexing');
@@ -15,10 +15,10 @@ export async function indexAllSources(): Promise<void> {
   }
   for (const s of appConfig.sources) {
     try {
-      const stats = await indexDirectory(s.path, { collection: s.collection });
+      const stats = await indexSource(s as SourceSpec);
       log.info(`indexed "${s.collection}"`, stats);
     } catch (err) {
-      log.error(`failed to index "${s.collection}" (${s.path})`, (err as Error).message);
+      log.error(`failed to index "${s.collection}" (${s.type})`, (err as Error).message);
     }
   }
 }
@@ -37,7 +37,7 @@ export async function ensureSeedIndex(): Promise<void> {
     }
     log.info(`collection "${s.collection}" is empty — indexing before serving...`);
     try {
-      const stats = await indexDirectory(s.path, { collection: s.collection });
+      const stats = await indexSource(s as SourceSpec);
       log.info(`seed-indexed "${s.collection}"`, stats);
     } catch (err) {
       log.error(

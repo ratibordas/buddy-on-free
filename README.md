@@ -49,17 +49,31 @@ Switching the model tier (see [SIZING.md](SIZING.md)) is a one-line change.
 On boot the server applies migrations, indexes the configured sources — it never
 answers against an empty index — and schedules a daily incremental re-index.
 
-### Supported source languages
+### Sources
 
-Indexing routes by file type:
+The primary use case is **documentation Q&A** — point it at where your docs
+live and it answers questions over them. Each source has a `type`:
 
-- **Docs** — Markdown (`.md`) via the heading-aware chunker.
-- **Code (AST chunking, whole functions)** — Go, TypeScript/TSX, JavaScript/JSX,
-  Python (tree-sitter). Any other code language falls back to a structure-aware
-  chunker (still usable, just not AST-precise).
-- **Structural graph** (impact analysis, used offline) is chosen per language via
-  `structuralByLanguage` in the config: **goda**/GoGraph for Go, **codebase-memory**
-  for TypeScript/JavaScript. Set a source's `language` (or override with `structural`).
+- **`docs`** — local Markdown files, heading-aware chunker.
+- **`notion`** — Notion pages via the API (a whole database, or every page shared
+  with the integration); blocks are normalized to Markdown. Token in `.env`
+  (`NOTION_TOKEN`).
+- **`confluence`** — a Confluence space via the REST API; storage-format HTML is
+  converted to text. Base URL + creds in `.env` (`CONFLUENCE_*`). Cloud uses
+  Basic auth (email + API token), Server/DC a Bearer PAT.
+- **`code`** — a local codebase (secondary: useful for verification, and to
+  generate NL docs that close symptom→mechanism gaps). AST chunking (whole
+  functions) for Go, TypeScript/TSX, JavaScript/JSX and Python via tree-sitter;
+  any other language falls back to a structure-aware chunker.
+
+All sources index into the same pgvector store, incrementally (sha256 dedup), and
+are answered by the same retrieval pipeline. Adding a new doc format is one
+connector + a `type` in the config.
+
+For code sources, a **structural graph** (impact analysis, used offline) is chosen
+per language via `structuralByLanguage`: **goda**/GoGraph for Go,
+**codebase-memory** for TypeScript/JavaScript. Set a source's `language` (or
+override with `structural`).
 
 ## Quick start — Docker
 

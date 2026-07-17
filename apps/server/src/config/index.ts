@@ -25,6 +25,17 @@ const schema = z.object({
 
   WORKER_CONCURRENCY: z.coerce.number().int().positive().default(2),
   DEFAULT_ETA_SECONDS: z.coerce.number().int().positive().default(20),
+
+  // Remote doc connectors (optional — only needed for the matching source type).
+  // Notion: an internal integration token; share the pages/databases with it.
+  NOTION_TOKEN: z.string().optional(),
+  NOTION_API_VERSION: z.string().default('2022-06-28'),
+  // Confluence Cloud: base URL (https://your-site.atlassian.net/wiki), the account
+  // email and an API token (Basic auth). For Server/DC leave user empty and put a
+  // PAT in the token (Bearer auth).
+  CONFLUENCE_BASE_URL: z.string().url().optional(),
+  CONFLUENCE_USER: z.string().optional(),
+  CONFLUENCE_TOKEN: z.string().optional(),
 });
 
 const parsed = schema.safeParse(process.env);

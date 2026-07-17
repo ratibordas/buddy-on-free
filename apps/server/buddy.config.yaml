@@ -27,14 +27,23 @@ structuralByLanguage:
   typescript: codebase-memory
   javascript: codebase-memory
 
-# Sources indexed into pgvector. Chunkers route by file extension:
-#   docs (.md) -> markdown chunker
-#   code with AST support (go, ts, tsx, js, jsx, python) -> tree-sitter AST chunks (whole functions)
-#   other code -> structure-aware fallback chunker
+# Sources indexed into pgvector. How each is chunked:
+#   docs        -> local markdown files, heading-aware chunker (PRIMARY use case)
+#   notion      -> Notion pages via API, blocks -> markdown  (token in .env: NOTION_TOKEN)
+#   confluence  -> Confluence space via API, storage HTML -> text (creds in .env: CONFLUENCE_*)
+#   code        -> local code; AST chunks for go/ts/tsx/js/jsx/python, else fallback chunker
 sources:
   - collection: handbook
     type: docs
     path: ../../sample-docs
+  # --- Remote documentation (the main use case: index docs, answer questions) ---
+  # - collection: notion
+  #   type: notion
+  #   database: <notion-database-id>   # omit to index every page shared with the integration
+  # - collection: wiki
+  #   type: confluence
+  #   space: ENG                       # omit to index every space the token can read
+  # --- Code (secondary: for verification / symptom->mechanism via generated docs) ---
   # - collection: crm-api
   #   type: code
   #   language: go            # -> structural: goda (via structuralByLanguage)
